@@ -56,7 +56,6 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [token, setToken] = useState('')
   const [role, setRole] = useState<Role>('employee')
   const [employeeId, setEmployeeId] = useState('')
   const [directory, setDirectory] = useState<DirectoryItem[]>([])
@@ -88,8 +87,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
     setBusy(true)
     try {
       let s
-      if (!USE_MOCK) s = await authApi.loginWithToken(token.trim())
-      else if (mode === 'login') s = await authApi.login(email, password)
+      if (!USE_MOCK || mode === 'login') s = await authApi.login(email.trim(), password)
       else s = await authApi.register({ name, email, password, role, employee_id: role === 'employee' ? employeeId : undefined })
       signIn(s)
     } catch (err) {
@@ -120,7 +118,9 @@ export function AuthPage({ mode }: { mode: Mode }) {
               Персональные рекомендации, прозрачный путь к следующему грейду и аналитика для HR.
             </p>
             <div className="mt-8 grid max-w-sm grid-cols-3 gap-3">
-              {[['44', 'сотрудника'], ['5', 'разделов'], ['24', 'активности']].map(([n, l]) => (
+              {(USE_MOCK
+                ? [['44', 'сотрудника'], ['5', 'разделов'], ['24', 'активности']]
+                : [['1–3', 'шага к грейду'], ['100%', 'объяснимый расчёт'], ['2', 'роли доступа']]).map(([n, l]) => (
                 <div key={l} className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/20 backdrop-blur">
                   <p className="text-2xl font-semibold">{n}</p>
                   <p className="text-xs text-white/70">{l}</p>
@@ -155,15 +155,9 @@ export function AuthPage({ mode }: { mode: Mode }) {
           )}
 
           <form onSubmit={submit} className="mt-6 space-y-4">
-            {!USE_MOCK ? (
+            {(
               <>
-                <Field label="Токен доступа" hint="Введите токен сотрудника или HR, выданный организатором демонстрации.">
-                  <input type="password" autoComplete="off" className={inputCls} value={token} onChange={(e) => setToken(e.target.value)} placeholder="Вставьте токен" required autoFocus />
-                </Field>
-              </>
-            ) : (
-              <>
-                {mode === 'register' && (
+                {USE_MOCK && mode === 'register' && (
                   <Field label="Имя и фамилия">
                     <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Например, Айгерим Сейткали" required autoComplete="name" />
                   </Field>
@@ -171,7 +165,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
                 <Field label="Рабочая почта">
                   <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.kz" required autoComplete="email" autoFocus />
                 </Field>
-                <Field label="Пароль" hint={mode === 'register' ? 'Минимум 6 символов' : undefined}>
+                <Field label="Пароль" hint={USE_MOCK && mode === 'register' ? 'Минимум 6 символов' : undefined}>
                   <div className="relative">
                     <input
                       className={cn(inputCls, 'pr-24')}
@@ -180,8 +174,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
                       required
-                      minLength={mode === 'register' ? 6 : undefined}
-                      autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                      minLength={USE_MOCK && mode === 'register' ? 6 : undefined}
+                      autoComplete={!USE_MOCK || mode === 'login' ? 'current-password' : 'new-password'}
                     />
                     <button type="button" onClick={() => setShowPass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full px-3 py-1 text-xs font-medium text-slate-500 hover:bg-black/5">
                       {showPass ? 'Скрыть' : 'Показать'}
@@ -189,7 +183,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
                   </div>
                 </Field>
 
-                {mode === 'register' && (
+                {USE_MOCK && mode === 'register' && (
                   <>
                     <Field label="Кто вы">
                       <Segmented
@@ -220,7 +214,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
             )}
 
             <Button type="submit" loading={busy} className="w-full !py-3.5 text-[15px]">
-              {!USE_MOCK ? 'Войти' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+              {!USE_MOCK || mode === 'login' ? 'Войти' : 'Создать аккаунт'}
             </Button>
           </form>
 
@@ -243,8 +237,19 @@ export function AuthPage({ mode }: { mode: Mode }) {
             </div>
           )}
 
+          {!USE_MOCK && (
+            <p className="mt-6 rounded-2xl bg-black/[0.03] px-4 py-3 text-sm text-slate-600">
+              Учётные записи выдаёт HR-администратор. Забыли пароль — обратитесь к нему: он выдаст временный
+              пароль, который нужно сменить при первом входе.
+            </p>
+          )}
+
+          <p className="mt-6 text-center text-xs text-slate-500">
+            <Link to="/privacy" className="hover:underline">Политика обработки персональных данных</Link>
+          </p>
+
           {USE_MOCK && (
-            <p className="mt-6 text-center text-sm text-slate-600">
+            <p className="mt-4 text-center text-sm text-slate-600">
               {mode === 'login' ? 'Нет аккаунта? ' : 'Уже есть аккаунт? '}
               <Link to={mode === 'login' ? '/register' : '/login'} state={location.state} className="font-semibold text-brand-600 hover:underline">
                 {mode === 'login' ? 'Зарегистрироваться' : 'Войти'}

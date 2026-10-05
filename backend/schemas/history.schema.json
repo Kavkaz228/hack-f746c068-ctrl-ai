@@ -4,18 +4,21 @@
       "additionalProperties": false,
       "properties": {
         "record_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Record Id",
           "type": "string"
         },
         "employee_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Employee Id",
           "type": "string"
         },
         "event_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Event Id",

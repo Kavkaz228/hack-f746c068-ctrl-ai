@@ -12,6 +12,10 @@ export const qk = {
     ['comparison', id, firstEventId, secondEventId] as const,
   history: (id: string) => ['history', id] as const,
   hr: ['hr'] as const,
+  requests: (status: string) => ['completion-requests', status] as const,
+  users: ['users'] as const,
+  snapshots: ['snapshots'] as const,
+  audit: (action: string) => ['audit', action] as const,
 }
 
 export const useEmployees = () => useQuery({ queryKey: qk.employees, queryFn: api.getEmployees })
@@ -48,6 +52,7 @@ function useInvalidateEmployee(id: string) {
       qc.invalidateQueries({ queryKey: qk.history(id) }),
       qc.invalidateQueries({ queryKey: qk.employees }),
       qc.invalidateQueries({ queryKey: qk.hr }),
+      qc.invalidateQueries({ queryKey: ['completion-requests'] }),
     ])
 }
 
@@ -70,8 +75,51 @@ export const completeAttempt = (aid: string, idempotencyKey = createIdempotencyK
 export function useRejectActivity(id: string) {
   const invalidate = useInvalidateEmployee(id)
   return useMutation({
-    mutationFn: ({ aid, action }: { aid: string; action: 'skip' | 'decline' }) =>
-      action === 'skip' ? api.skipActivity(id, aid) : api.declineActivity(id, aid),
+    mutationFn: ({ aid, action, idempotencyKey }: { aid: string; action: 'skip' | 'decline'; idempotencyKey: string }) =>
+      action === 'skip' ? api.skipActivity(id, aid, idempotencyKey) : api.declineActivity(id, aid, idempotencyKey),
+    onSuccess: invalidate,
+    retry: (failureCount, error) => failureCount < 1
+      && error instanceof ApiError
+      && (error.status === 0 || error.status >= 500),
+  })
+}
+
+export function usePromote(id: string) {
+  const invalidate = useInvalidateEmployee(id)
+  return useMutation({
+    mutationFn: (body: { force?: boolean; reason?: string; expected_grade?: string }) => api.promote(id, body),
     onSuccess: invalidate,
   })
+}
+
+// ---------- HR-администрирование ----------
+export const useCompletionRequests = (status: 'pending' | 'all' = 'pending', enabled = true) =>
+  useQuery({ queryKey: qk.requests(status), queryFn: () => api.listCompletionRequests(status), enabled,
+             refetchInterval: enabled ? 60_000 : false })
+
+export function useDecideCompletion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ requestId, approve, comment }: { requestId: string; approve: boolean; comment?: string; employeeId: string }) =>
+      api.decideCompletion(requestId, approve, comment),
+    onSuccess: (_data, variables) => Promise.all([
+      qc.invalidateQueries({ queryKey: ['completion-requests'] }),
+      qc.invalidateQueries({ queryKey: qk.profile(variables.employeeId) }),
+      qc.invalidateQueries({ queryKey: qk.recs(variables.employeeId) }),
+      qc.invalidateQueries({ queryKey: qk.history(variables.employeeId) }),
+      qc.invalidateQueries({ queryKey: qk.employees }),
+      qc.invalidateQueries({ queryKey: qk.hr }),
+    ]),
+  })
+}
+
+export const useUsers = () => useQuery({ queryKey: qk.users, queryFn: api.listUsers, retry: false })
+export const useSnapshots = () => useQuery({ queryKey: qk.snapshots, queryFn: api.listSnapshots, retry: false })
+export const useAudit = (action: string) =>
+  useQuery({ queryKey: qk.audit(action), queryFn: () => api.listAudit({ action: action || undefined }), retry: false })
+
+// После импорта или восстановления данных устаревает всё
+export function useInvalidateAll() {
+  const qc = useQueryClient()
+  return () => qc.invalidateQueries()
 }

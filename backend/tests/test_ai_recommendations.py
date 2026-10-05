@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.ai import _candidate_features, _request_gpt_choice
 from backend.api.app import create_app
+from backend.tests.support import database_url, make_settings
 from backend.api.auth import Account
 from backend.data_loader import load_dataset
 from backend.engine.recommendation import get_all_recommendations, get_recommendations
@@ -26,7 +27,8 @@ class AIRecommendationApiTests(unittest.TestCase):
         ]
         self.hr = {"Authorization": "Bearer hr-test-token-123456"}
         self.employee = {"Authorization": "Bearer employee-test-123456"}
-        self.app = create_app(state_path=Path(temporary.name) / "state.sqlite3", accounts=accounts)
+        self.app = create_app(database_url=database_url(self, temporary.name), accounts=accounts,
+                              settings=make_settings())
         self.client = self.enterContext(TestClient(self.app))
         self.seed = load_dataset()
 

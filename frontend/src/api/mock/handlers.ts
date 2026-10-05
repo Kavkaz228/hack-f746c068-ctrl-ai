@@ -44,7 +44,46 @@ export const handlers = [
   http.get(url('/auth/me'), async ({ request }) => {
     const acc = await auth.accountByRequest(request)
     if (!acc) return unauthorized()
-    return HttpResponse.json({ account_id: acc.accountId, role: acc.role, employee_id: acc.employeeId })
+    return HttpResponse.json(auth.publicAccount(acc))
+  }),
+
+  http.post(url('/auth/logout'), async ({ request }) => {
+    await auth.logout(request)
+    return HttpResponse.json({ status: 'signed_out' })
+  }),
+
+  http.post(url('/auth/consent'), async ({ request }) => {
+    const acc = await auth.accountByRequest(request)
+    if (!acc) return unauthorized()
+    return HttpResponse.json(await auth.setConsent(acc, true))
+  }),
+
+  http.delete(url('/auth/consent'), async ({ request }) => {
+    const acc = await auth.accountByRequest(request)
+    if (!acc) return unauthorized()
+    return HttpResponse.json(await auth.setConsent(acc, false))
+  }),
+
+  http.post(url('/auth/password'), async ({ request }) => {
+    const acc = await auth.accountByRequest(request)
+    if (!acc) return unauthorized()
+    const body = (await request.json()) as { current_password: string; new_password: string }
+    const result = await auth.changePassword(acc, body.current_password ?? '', body.new_password ?? '')
+    if (result === 'invalid_password') return fail(400, result, 'Текущий пароль указан неверно')
+    if (result === 'weak_password') return fail(422, result, 'Пароль должен быть не короче 10 символов и содержать цифры')
+    return HttpResponse.json(result)
+  }),
+
+  http.post(url('/employees/:id/promote'), async ({ params, request }) => {
+    const denied = await guard(request, { hr: true }); if (denied) return denied
+    const body = (await request.json().catch(() => ({}))) as { force?: boolean; expected_grade?: string }
+    const current = engine.getProfile(params.id as string)
+    if (current && body.expected_grade && current.grade !== body.expected_grade) {
+      return fail(409, 'grade_changed', `Грейд уже изменён на «${current.grade}» — обновите страницу`)
+    }
+    const result = engine.promote(params.id as string, !!body.force)
+    if (result === 'requirements_not_met') return fail(422, result, 'Обязательные требования следующего грейда не выполнены')
+    return result ? HttpResponse.json(result) : notFound()
   }),
 
   // Публичный справочник для формы регистрации: выбрать свой профиль

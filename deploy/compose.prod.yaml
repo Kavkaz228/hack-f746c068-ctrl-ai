@@ -1,0 +1,111 @@
+# Продакшн на собственном сервере (VPS в дата-центре на территории РК):
+#   cp .env.example .env    # домен, пароли, первый HR
+#   docker compose -f deploy/compose.prod.yaml up --build -d
+# Caddy получает сертификат Let's Encrypt для CAREER_QUEST_DOMAIN и проксирует на приложение;
+# порты базы и приложения наружу не открываются.
+name: career-quest-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: career_quest
+      POSTGRES_USER: career_quest
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U career_quest -d career_quest"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  web:
+    build: ..
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CAREER_QUEST_ENV: production
+      CAREER_QUEST_DATABASE_URL: postgresql+psycopg://career_quest:${POSTGRES_PASSWORD}@db:5432/career_quest
+      CAREER_QUEST_COMPLETION_MODE: ${CAREER_QUEST_COMPLETION_MODE:-approval}
+      CAREER_QUEST_TRUSTED_ORIGINS: https://${CAREER_QUEST_DOMAIN:?Set CAREER_QUEST_DOMAIN in .env}
+      # Доверяем X-Forwarded-* только от Caddy (подсеть сети edge).
+      CAREER_QUEST_FORWARDED_ALLOW_IPS: 172.30.10.0/24
+      CAREER_QUEST_BOOTSTRAP_HR_EMAIL: ${CAREER_QUEST_BOOTSTRAP_HR_EMAIL:-}
+      CAREER_QUEST_BOOTSTRAP_HR_PASSWORD: ${CAREER_QUEST_BOOTSTRAP_HR_PASSWORD:-}
+      CAREER_QUEST_METRICS_TOKEN: ${CAREER_QUEST_METRICS_TOKEN:-}
+      CAREER_QUEST_AI_DAILY_LIMIT: ${CAREER_QUEST_AI_DAILY_LIMIT:-20}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CAREER_QUEST_OPENAI_MODEL: ${CAREER_QUEST_OPENAI_MODEL:-gpt-4o-mini}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    networks: [internal, edge]
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on: [web]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      CAREER_QUEST_DOMAIN: ${CAREER_QUEST_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    restart: unless-stopped
+
+  backup:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: career_quest
+      PGDATABASE: career_quest
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ${BACKUP_DIR:-../backups}:/backups
+    networks: [internal]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while true; do
+          stamp=$$(date -u +%Y%m%dT%H%M%SZ)
+          if pg_dump -Fc -f /backups/career_quest-$$stamp.dump.partial; then
+            mv /backups/career_quest-$$stamp.dump.partial /backups/career_quest-$$stamp.dump
+            echo "backup ok: career_quest-$$stamp.dump"
+          else
+            echo "backup FAILED" >&2
+          fi
+          find /backups -name 'career_quest-*.dump' -mtime +$${BACKUP_KEEP_DAYS} -delete
+          sleep 86400
+        done
+    restart: unless-stopped
+
+networks:
+  internal:
+    internal: true
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

@@ -16,33 +16,37 @@ React + Vite 6 + TypeScript + Tailwind 3 + TanStack Query + Recharts + MSW.
 - **Выполнение активности:** окно «было → стало» по формуле `new_skill = max(old, min(old + gain, max_level))`, автоматический пересчёт навыков, готовности и рекомендаций.
 - **История активностей:** приглашено / записано / выполнено / пропущено / отклонено.
 - **HR-аналитика:** ключевые метрики, топ разрывов, статусы и участие по активностям, тепловая карта разрывов по ролям, сотрудники без рекомендаций.
-- **Mock и реальный API:** один интерфейс работает с MSW или FastAPI; в реальном режиме используются bearer-токен, маршруты backend и адаптеры его ответов.
+- **Mock и реальный API:** один интерфейс работает с MSW или FastAPI; в реальном режиме — вход по паролю с httpOnly-cookie, маршруты backend и адаптеры его ответов.
+- **Вход и доступ:** смена временного пароля, согласие на обработку ПДн (и его отзыв), политика конфиденциальности `/privacy`.
+- **Управление для HR:** заявки на подтверждение выполнения, учётные записи с временными паролями, импорт с проверкой без записи, снимки и выгрузка, журнал действий, повышение грейда в профиле.
+- **Пропуск и отказ** работают с настоящим API; страницы загружаются по требованию (code splitting).
 - **Выбор с GPT:** в профиле настоящего API кнопка «Подобрать с GPT» запускает выбор подходящей активности, показывает источник, объяснение и запасной локальный результат при недоступности GPT. Доступны прогноз и выполнение выбранного шага. При открытии страницы запрос к модели не отправляется.
 
 ## Вход и роли
 
-Страницы `/login` и `/register`. Права повторяют `backend/api/auth.py`:
+Права повторяют серверные (`backend/api/auth.py`):
 
-- **HR** видит список сотрудников, любой профиль и HR-аналитику;
+- **HR** видит список сотрудников, любой профиль, HR-аналитику и раздел «Управление»;
 - **Сотрудник** видит только свой профиль и свою историю.
 
-**Мок-режим** (`VITE_USE_MOCK=true`): вход по почте и паролю, регистрация с привязкой к профилю сотрудника.
-Демо-аккаунты (пароль `demo1234`):
+**Реальный API** (`VITE_USE_MOCK=false`): вход по почте и паролю (`POST /auth/login`).
+Сервер ставит httpOnly-cookie — JavaScript её не читает, в `localStorage` ничего
+не хранится; при открытии страницы сессия восстанавливается запросом `GET /auth/me`.
+Регистрации нет — учётные записи выдаёт HR с временным паролем. Охрана маршрутов
+(`src/auth/guards.tsx`) сначала ведёт на `/account/password` (временный пароль),
+затем на `/consent` (согласие на обработку ПДн), и только потом в приложение.
+Ответы 401 и 403 `password_change_required`/`consent_required` обновляют состояние входа.
+
+**Мок-режим** (`VITE_USE_MOCK=true`): вход по почте и паролю, регистрация с
+привязкой к профилю, экран согласия. Демо-аккаунты (пароль `demo1234`):
 
 | Роль | Почта |
 |---|---|
 | HR-менеджер | `hr@careerquest.kz` |
 | Сотрудник (Иван Петров) | `ivan.petrov@careerquest.kz` |
 
-Зарегистрированные mock-аккаунты и сессия хранятся в `localStorage` браузера.
-В реальном режиме сессия содержит bearer-токен; это допустимо для локального демо,
-но не является схемой хранения токенов для production.
-
-**Реальный API** (`VITE_USE_MOCK=false`): форма принимает токен доступа из
-`backend/runtime/access.json`. Frontend проверяет его через `GET /auth/me`, сохраняет
-сессию и автоматически отправляет `Authorization: Bearer <token>` в следующих
-запросах. Текущий backend не предоставляет `/auth/login` и `/auth/register`, поэтому
-почта, пароль и регистрация доступны только в mock-режиме.
+Mock-аккаунты и мок-токен хранятся в `localStorage` браузера — только для демо.
+Разделы «Управление» в мок-режиме показывают, что работают с сервером.
 
 ## Стиль
 
@@ -51,20 +55,16 @@ Liquid Glass в духе Apple + зелёно-золотая палитра: з�
 
 ## Запуск
 
-Для готового приложения с backend выполните из корня репозитория:
+Готовое приложение с backend — из корня репозитория (см. основной README):
 
 ```sh
-docker compose up --build -d
-docker compose exec web cat /var/data/access.json
+cp .env.example .env
+docker compose up --build -d     # http://localhost:8000
 ```
 
-Откройте `http://localhost:8000` и войдите токеном из вывода второй команды.
-Docker собирает frontend с `VITE_USE_MOCK=false` и `VITE_API_URL=/api`;
-Swagger доступен в `/api/docs`, отдельная настройка CORS не требуется.
-В контейнере прогресс хранится в SQLite на постоянном томе и переживает обновление
-страницы и перезапуск. Публикация описана в [инструкции](../docs/DEPLOY.md).
+Docker собирает frontend с `VITE_USE_MOCK=false` и `VITE_API_URL=/api`.
 
-Для отдельной разработки frontend из каталога `frontend`:
+Для разработки frontend из каталога `frontend`:
 
 ```bash
 npm install
@@ -78,21 +78,17 @@ npm run dev          # http://localhost:5173
 | Переменная | Значение |
 |---|---|
 | `VITE_USE_MOCK=true` | фронт работает на мок-данных (MSW перехватывает запросы), бэкенд не нужен |
-| `VITE_USE_MOCK=false` | frontend использует реальные маршруты FastAPI по адресу `VITE_API_URL` и преобразует ответы в модели интерфейса |
+| `VITE_USE_MOCK=false` | реальные маршруты FastAPI по адресу `VITE_API_URL` (по умолчанию `/api`) |
+| `VITE_PROXY_TARGET` | куда Vite проксирует `/api` в разработке (по умолчанию `http://127.0.0.1:8000`) |
 
 После изменения `.env` перезапустите `npm run dev`. В мок-режиме в шапке горит бейдж **Mock API**.
 Состояние моков живёт в памяти — **перезагрузка страницы сбрасывает демо** к исходным данным.
 
-Для реального режима запустите backend с
-`CAREER_QUEST_CORS_ORIGINS=http://localhost:5173`, установите
-`VITE_USE_MOCK=false`, перезапустите `npm run dev` и войдите токеном из
-`backend/runtime/access.json`. Профиль, история, рекомендации, завершение активности,
-лаборатория выбора и HR-аналитика после этого читаются из FastAPI.
-
-FastAPI пока не предоставляет маршруты для отметок «пропустить» и «отказаться».
-Эти действия доступны только с `VITE_USE_MOCK=true`; в реальном режиме frontend
-не отправляет `skip`/`decline`. Уже существующие статусы `skipped` и `declined` из
-истории backend по-прежнему отображаются.
+Для реального режима запустите API из корня репозитория `python -m backend.api`
+(порт 8000), установите `VITE_USE_MOCK=false` и перезапустите `npm run dev`.
+Vite проксирует `/api` на backend, поэтому браузер видит один адрес и cookie
+сессии работает без CORS. В режиме разработки backend сам создаёт демо-аккаунты
+и записывает пароли в `backend/runtime/demo-credentials.txt`.
 
 ## API-контракт и адаптеры
 
@@ -103,14 +99,16 @@ snake_case-ответы FastAPI и объединённый профиль в т
 
 | Данные или действие | Mock (MSW) | Реальный FastAPI |
 |---|---|---|
-| Сотрудники | `GET /employees` | `GET /employees` и профили `GET /employees/{id}` для готовности |
+| Сотрудники | `GET /employees` | `GET /hr/employees` — все с готовностью одним запросом |
 | Профиль | `GET /employees/{id}/profile` | `GET /employees/{id}` |
 | История | `GET /employees/{id}/history` | поле `history` ответа `GET /employees/{id}` и каталог `GET /events` |
 | Рекомендации | `GET /employees/{id}/recommendations` | `GET /employees/{id}/recommendations` (лимит backend по умолчанию — 3) |
 | GPT-выбор по кнопке | не используется | `POST /employees/{id}/ai/recommendations` |
-| Завершение | `POST /employees/{id}/activities/{event_id}/complete` | тот же маршрут с заголовком `Idempotency-Key` |
+| Завершение | `POST /employees/{id}/activities/{event_id}/complete` | тот же маршрут с `Idempotency-Key`; 202 — заявка ждёт HR |
 | HR-аналитика | `GET /hr/stats` | `GET /hr/dashboard` |
-| Пропуск / отказ | отдельные mock-маршруты | не поддерживаются backend |
+| Пропуск / отказ | `POST .../skip`, `.../decline` | те же маршруты с `Idempotency-Key` |
+| Повышение грейда | `POST /employees/{id}/promote` | тот же маршрут (только HR) |
+| Заявки, учётные записи, данные, журнал | нет (раздел показывает подсказку) | `/completion-requests`, `/users`, `/dataset/*`, `/audit` |
 
 Для каждого осознанного нажатия «Выполнить» frontend создаёт UUID v4 через
 `crypto.randomUUID()` (с безопасным fallback на `crypto.getRandomValues()`) и
@@ -136,7 +134,9 @@ GET /employees/{id}/compare?first_event_id=A&second_event_id=B → ActivityCompa
 ```
 src/
 ├─ api/
-│  ├─ client.ts          # fetch-обёртка, API_URL, USE_MOCK
+│  ├─ config.ts          # API_URL, USE_MOCK
+│  ├─ client.ts          # fetch-обёртка (cookie-сессия, ошибки, 401/403)
+│  ├─ auth.ts            # вход, выход, пароль, согласие
 │  ├─ endpoints.ts       # выбор mock/real маршрутов
 │  ├─ adapters.ts        # FastAPI snake_case → модели UI
 │  └─ mock/
@@ -144,15 +144,18 @@ src/
 │     ├─ engine.ts       # копия логики бэка для моков: scoring, progress, HR-статистика
 │     ├─ handlers.ts     # MSW-обработчики тех же URL
 │     └─ browser.ts
+├─ auth/                 # AuthContext (сессия), guards (пароль → согласие → роль)
+├─ legal/texts.ts        # тексты согласия и политики (шаблоны)
 ├─ types/                # API-контракт
 ├─ hooks/queries.ts      # React Query хуки + пересчёт после действий
 ├─ components/
-│  ├─ profile/           # ProfileHeader, SkillGapChart, GapList
+│  ├─ profile/           # ProfileHeader, SkillGapChart, GapList, PromotionPanel
 │  ├─ recommendations/   # RecommendationCard, ScoreBreakdown, DecisionLab
 │  ├─ progress/          # CompleteModal (было → стало)
 │  ├─ hr/                # TopGapsChart, StatusFunnel, GapHeatmap, UncoveredTable
 │  ├─ layout/ ui/
-├─ pages/                # Employees, Profile, History, Hr
+├─ pages/                # Employees, Profile, History, Hr, Auth, AccountPages, Privacy
+│  └─ admin/             # Approvals, Users, Data, Audit
 └─ router.tsx
 ```
 

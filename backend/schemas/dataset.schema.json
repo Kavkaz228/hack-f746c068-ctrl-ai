@@ -4,12 +4,14 @@
       "additionalProperties": false,
       "properties": {
         "event_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Event Id",
           "type": "string"
         },
         "title": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Title",
           "type": "string"
@@ -27,12 +29,14 @@
           "type": "string"
         },
         "category": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Category",
           "type": "string"
         },
         "audience": {
           "items": {
+            "maxLength": 255,
             "minLength": 1,
             "type": "string"
           },
@@ -75,6 +79,7 @@
       "additionalProperties": false,
       "properties": {
         "skill_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Skill Id",
@@ -105,12 +110,14 @@
       "additionalProperties": false,
       "properties": {
         "role": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Role",
           "type": "string"
         },
         "grades": {
           "items": {
+            "maxLength": 255,
             "minLength": 1,
             "type": "string"
           },
@@ -126,11 +133,13 @@
               }
             },
             "propertyNames": {
+              "maxLength": 64,
               "minLength": 1
             },
             "type": "object"
           },
           "propertyNames": {
+            "maxLength": 255,
             "minLength": 1
           },
           "title": "Requirements",
@@ -149,22 +158,26 @@
       "additionalProperties": false,
       "properties": {
         "employee_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Employee Id",
           "type": "string"
         },
         "name": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Name",
           "type": "string"
         },
         "role": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Role",
           "type": "string"
         },
         "grade": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Grade",
           "type": "string"
@@ -183,6 +196,7 @@
             }
           },
           "propertyNames": {
+            "maxLength": 64,
             "minLength": 1
           },
           "title": "Skills",
@@ -204,18 +218,21 @@
       "additionalProperties": false,
       "properties": {
         "record_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Record Id",
           "type": "string"
         },
         "employee_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Employee Id",
           "type": "string"
         },
         "event_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Event Id",
@@ -280,12 +297,14 @@
       "additionalProperties": false,
       "properties": {
         "skill_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Skill Id",
           "type": "string"
         },
         "name": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Name",
           "type": "string"

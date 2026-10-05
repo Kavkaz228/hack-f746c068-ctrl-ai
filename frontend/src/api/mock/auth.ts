@@ -13,7 +13,10 @@ export interface MockAccount {
   role: Role
   employeeId: string | null
   tokens: string[]
+  consentVersion?: string | null
 }
+
+export const MOCK_CONSENT_VERSION = '2026-10'
 
 const KEY = 'cq_mock_accounts'
 
@@ -56,9 +59,31 @@ function save() {
 
 const newToken = () => `cq_${crypto.randomUUID().replace(/-/g, '')}`
 
-export const publicAccount = (a: MockAccount, token: string) => ({
+export const publicAccount = (a: MockAccount, token?: string) => ({
   token, account_id: a.accountId, role: a.role, employee_id: a.employeeId, name: a.name, email: a.email,
+  auth: 'session', must_change_password: false, consent_required: a.consentVersion !== MOCK_CONSENT_VERSION,
+  consent_version: MOCK_CONSENT_VERSION, completion_mode: 'instant',
 })
+
+export async function setConsent(account: MockAccount, given: boolean) {
+  account.consentVersion = given ? MOCK_CONSENT_VERSION : null
+  save()
+  return publicAccount(account)
+}
+
+export async function changePassword(account: MockAccount, current: string, next: string) {
+  if (account.passwordHash !== (await hashPassword(current))) return 'invalid_password' as const
+  if (next.length < 10 || !/\d/.test(next)) return 'weak_password' as const
+  account.passwordHash = await hashPassword(next)
+  save()
+  return publicAccount(account)
+}
+
+export async function logout(request: Request) {
+  const account = await accountByRequest(request)
+  const token = (request.headers.get('Authorization') ?? '').slice(7)
+  if (account) { account.tokens = account.tokens.filter((t) => t !== token); save() }
+}
 
 export async function login(email: string, password: string) {
   const list = await load()

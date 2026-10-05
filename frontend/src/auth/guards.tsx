@@ -3,11 +3,25 @@ import { Navigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import type { Role } from './session'
 
-// Пускает только авторизованных; при необходимости — только нужную роль
-export function RequireAuth({ children, role }: { children: ReactNode; role?: Role }) {
-  const { session } = useAuth()
+export function Splash() {
+  return (
+    <div className="flex min-h-screen items-center justify-center" role="status" aria-live="polite">
+      <span className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+      <span className="sr-only">Загрузка…</span>
+    </div>
+  )
+}
+
+// Пускает только авторизованных; временный пароль и согласие на обработку ПДн — раньше всего остального
+export function RequireAuth({ children, role, allowGate }: { children: ReactNode; role?: Role; allowGate?: boolean }) {
+  const { session, ready, signedOut } = useAuth()
   const location = useLocation()
-  if (!session) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
+  if (!ready) return <Splash />
+  if (!session) return <Navigate to="/login" replace state={signedOut ? undefined : { from: location.pathname + location.search }} />
+  if (!allowGate) {
+    if (session.mustChangePassword) return <Navigate to="/account/password" replace state={{ from: location.pathname }} />
+    if (session.consentRequired) return <Navigate to="/consent" replace state={{ from: location.pathname }} />
+  }
   if (role && session.role !== role) return <Navigate to={homePath(session.role, session.employeeId)} replace />
   return <>{children}</>
 }

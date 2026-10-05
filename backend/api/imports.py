@@ -52,3 +52,18 @@ def import_dataset(current: Dataset, parts: dict, mode: str) -> tuple[Dataset, d
     return result, {"status": "imported", "mode": mode, "employees": len(result.employees),
                     "events": len(result.events), "skills": len(result.skills.skill_catalog),
                     "history_records": len(result.activity_history)}
+
+
+def preview_import(current: Dataset, parts: dict, mode: str) -> dict:
+    """Validate an import without writing anything and describe what would change."""
+    result, summary = import_dataset(current, parts, mode)
+    before = {"employees": {e.employee_id for e in current.employees},
+              "events": {e.event_id for e in current.events},
+              "activity_history": {r.record_id for r in current.activity_history}}
+    after = {"employees": {e.employee_id for e in result.employees},
+             "events": {e.event_id for e in result.events},
+             "activity_history": {r.record_id for r in result.activity_history}}
+    changes = {name: {"added": len(after[name] - before[name]), "removed": len(before[name] - after[name])}
+               for name in before}
+    return {**summary, "status": "valid", "dry_run": True, "changes": changes,
+            "skills_changed": result.skills != current.skills}

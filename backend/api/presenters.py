@@ -6,11 +6,11 @@ from typing import Literal
 from pydantic import Field
 
 from backend.engine.grade_progress import GradeReadinessResult
-from backend.engine.hr import RoleSkillDeficit, get_hr_summary
+from backend.engine.hr import EmployeeEvaluation, RoleSkillDeficit, aggregate_hr_summary, evaluate_all
 from backend.engine.progress import complete_activity
 from backend.engine.recommendation import RecommendationResult
 from backend.engine.skill_gap import SkillGapResult, get_employee_skill_gaps
-from backend.models import Dataset, Model
+from backend.models import Activity, Dataset, Model, SkillsDocument
 
 PARTICIPATION_STATUSES = ("invited", "enrolled", "completed", "skipped", "declined")
 
@@ -52,11 +52,17 @@ class HRDashboardResult(Model):
 
 
 def get_hr_dashboard(dataset: Dataset) -> HRDashboardResult:
-    summary = get_hr_summary(dataset)
+    triples = [(r.employee_id, r.event_id, r.status) for r in dataset.activity_history]
+    return build_hr_dashboard(evaluate_all(dataset), dataset.events, dataset.skills, triples)
+
+
+def build_hr_dashboard(evaluations: list[EmployeeEvaluation], events: list[Activity],
+                       skills: SkillsDocument, history: list[tuple[str, str, str]]) -> HRDashboardResult:
+    """Linear in employees + history; evaluations may come from a per-employee cache."""
+    summary = aggregate_hr_summary(evaluations, events, skills, history)
     mandatory_counts = {}
-    for employee in dataset.employees:
-        gaps = get_employee_skill_gaps(dataset, employee.employee_id)
-        for skill_id, gap in gaps.gaps.items():
+    for evaluation in evaluations:
+        for skill_id, gap in evaluation.gaps.gaps.items():
             if gap.mandatory and gap.gap > 0:
                 mandatory_counts[skill_id] = mandatory_counts.get(skill_id, 0) + 1
     return HRDashboardResult(

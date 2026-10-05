@@ -4,12 +4,14 @@
       "additionalProperties": false,
       "properties": {
         "role": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Role",
           "type": "string"
         },
         "grades": {
           "items": {
+            "maxLength": 255,
             "minLength": 1,
             "type": "string"
           },
@@ -25,11 +27,13 @@
               }
             },
             "propertyNames": {
+              "maxLength": 64,
               "minLength": 1
             },
             "type": "object"
           },
           "propertyNames": {
+            "maxLength": 255,
             "minLength": 1
           },
           "title": "Requirements",
@@ -76,12 +80,14 @@
       "additionalProperties": false,
       "properties": {
         "skill_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Skill Id",
           "type": "string"
         },
         "name": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Name",
           "type": "string"

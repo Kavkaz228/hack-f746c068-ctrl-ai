@@ -1,3 +1,7 @@
+# ТОЛЬКО ДЕМОНСТРАЦИЯ на синтетических данных.
+# У Render нет региона в Казахстане, а Закон РК «О персональных данных и их защите»
+# (ст. 12) требует хранить базы с персональными данными граждан РК на территории РК.
+# Реальных сотрудников сюда не загружайте — для них используйте deploy/compose.prod.yaml.
 services:
   - type: web
     name: career-quest-ctrl-ai
@@ -6,12 +10,21 @@ services:
     region: frankfurt
     branch: main
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /api/health
+    healthCheckPath: /api/ready
     envVars:
       - key: CAREER_QUEST_STATE_PATH
         value: /var/data/state.sqlite3
-      - key: CAREER_QUEST_AUTH_FILE
-        value: /var/data/access.json
+      # Демо: выполнение засчитывается сразу, без подтверждения HR
+      - key: CAREER_QUEST_COMPLETION_MODE
+        value: instant
+      # Render — единственная точка входа, доверяем его X-Forwarded-*
+      - key: CAREER_QUEST_FORWARDED_ALLOW_IPS
+        value: "*"
+      # Первый HR задаётся в панели Render (значения не хранятся в репозитории)
+      - key: CAREER_QUEST_BOOTSTRAP_HR_EMAIL
+        sync: false
+      - key: CAREER_QUEST_BOOTSTRAP_HR_PASSWORD
+        sync: false
     disk:
       name: career-quest-data
       mountPath: /var/data
