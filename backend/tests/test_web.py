@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from backend.api.auth import Account
+from backend.tests.support import database_url, make_settings
 from backend.web import create_app
 
 
@@ -29,8 +30,8 @@ class WebTests(unittest.TestCase):
         ]
         self.employee = {"Authorization": "Bearer employee-test-123456"}
         self.hr = {"Authorization": "Bearer hr-test-token-123456"}
-        self.state_path = root / "state.sqlite3"
-        self.app = create_app(frontend, state_path=self.state_path, accounts=accounts)
+        self.database_url = database_url(self, root)
+        self.app = create_app(frontend, database_url=self.database_url, accounts=accounts, settings=make_settings())
         self.client = self.enterContext(TestClient(self.app))
 
     def test_frontend_pages_and_assets(self):
@@ -43,6 +44,13 @@ class WebTests(unittest.TestCase):
         self.assertEqual(asset.status_code, 200)
         self.assertEqual(asset.text, "console.log('app');")
 
+    def test_spa_pages_get_the_strict_content_security_policy(self):
+        for path in ("/", "/employee/docs", "/hr/docs", "/login"):
+            policy = self.client.get(path).headers["content-security-policy"]
+            self.assertIn("script-src 'self';", policy, path)
+            self.assertNotIn("jsdelivr", policy, path)
+        self.assertIn("jsdelivr", self.client.get("/api/docs").headers["content-security-policy"])
+
     def test_unknown_api_assets_and_runtime_are_not_spa_pages(self):
         for path in ("/api/unknown", "/assets/missing.js", "/assets/missing", "/access.json",
                      "/runtime/access.json", "/state.sqlite3", "/%2e%2e/access.json"):
@@ -53,7 +61,7 @@ class WebTests(unittest.TestCase):
                 self.assertNotEqual(response.text, self.html)
 
     def test_api_lifecycle_authentication_and_role_boundaries(self):
-        self.assertTrue(self.state_path.is_file())
+        self.assertEqual(self.client.get("/api/ready").json()["status"], "ready")
         self.assertEqual(self.client.get("/api/health").json(), {"status": "ok"})
         self.assertEqual(self.client.get("/api/auth/me").status_code, 401)
         identity = self.client.get("/api/auth/me", headers=self.employee)

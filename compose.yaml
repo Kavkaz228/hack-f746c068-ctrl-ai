@@ -1,17 +1,80 @@
+# Career Quest: приложение + PostgreSQL + ежедневные резервные копии.
+#   cp .env.example .env   # задайте POSTGRES_PASSWORD и учётку первого HR
+#   docker compose up --build -d
+# Сайт: http://localhost:8000. Для сервера с HTTPS используйте deploy/compose.prod.yaml.
+name: career-quest
+
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: career_quest
+      POSTGRES_USER: career_quest
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U career_quest -d career_quest"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   web:
     build: .
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
-      - "8000:8000"
+      - "${CAREER_QUEST_PORT:-8000}:8000"
     environment:
-      PORT: "8000"
-      CAREER_QUEST_STATE_PATH: /var/data/state.sqlite3
-      CAREER_QUEST_AUTH_FILE: /var/data/access.json
+      CAREER_QUEST_ENV: ${CAREER_QUEST_ENV:-production}
+      CAREER_QUEST_DATABASE_URL: postgresql+psycopg://career_quest:${POSTGRES_PASSWORD}@db:5432/career_quest
+      CAREER_QUEST_COMPLETION_MODE: ${CAREER_QUEST_COMPLETION_MODE:-approval}
+      CAREER_QUEST_BOOTSTRAP_HR_EMAIL: ${CAREER_QUEST_BOOTSTRAP_HR_EMAIL:-}
+      CAREER_QUEST_BOOTSTRAP_HR_PASSWORD: ${CAREER_QUEST_BOOTSTRAP_HR_PASSWORD:-}
+      CAREER_QUEST_METRICS_TOKEN: ${CAREER_QUEST_METRICS_TOKEN:-}
+      CAREER_QUEST_AI_DAILY_LIMIT: ${CAREER_QUEST_AI_DAILY_LIMIT:-20}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CAREER_QUEST_OPENAI_MODEL: ${CAREER_QUEST_OPENAI_MODEL:-gpt-4o-mini}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  backup:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: career_quest
+      PGDATABASE: career_quest
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
     volumes:
-      - career-quest-data:/var/data
+      - backups:/backups
+    # Сразу при старте и затем раз в сутки: pg_dump в custom-формате, старые копии удаляются.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while true; do
+          stamp=$$(date -u +%Y%m%dT%H%M%SZ)
+          if pg_dump -Fc -f /backups/career_quest-$$stamp.dump.partial; then
+            mv /backups/career_quest-$$stamp.dump.partial /backups/career_quest-$$stamp.dump
+            echo "backup ok: career_quest-$$stamp.dump"
+          else
+            echo "backup FAILED" >&2
+          fi
+          find /backups -name 'career_quest-*.dump' -mtime +$${BACKUP_KEEP_DAYS} -delete
+          sleep 86400
+        done
     restart: unless-stopped
 
 volumes:
-  career-quest-data:
+  pgdata:
+  backups:

@@ -145,7 +145,20 @@ export function getProfile(id: string): Profile | null {
     gaps: calcGaps(e),
     readiness: calcReadiness(e.skills, req),
     completedCount: e.history.filter((h) => h.status === 'completed').length,
+    meetsMandatory: nextGradeOf(e.grade) ? calcGaps(e).every((g) => !g.critical) : null,
+    pendingCompletions: [],
   }
+}
+
+// HR переводит на следующий грейд (в моках — без серверных проверок прав и журнала)
+export function promote(id: string, force: boolean) {
+  const e = getEmp(id)
+  const next = e ? nextGradeOf(e.grade) : null
+  if (!e || !next) return null
+  if (!force && calcGaps(e).some((g) => g.critical)) return 'requirements_not_met' as const
+  const previous = e.grade
+  e.grade = next as typeof e.grade
+  return { employee_id: id, previous_grade: previous, new_grade: next, forced: force }
 }
 
 export function getRecommendations(id: string): Recommendation[] {

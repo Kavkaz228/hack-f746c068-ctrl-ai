@@ -1,0 +1,19 @@
+# HTTPS-терминатор перед Career Quest. Сертификат выпускается автоматически.
+{
+	email {$ACME_EMAIL}
+}
+
+{$CAREER_QUEST_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 25MB
+	}
+	header -Server
+	reverse_proxy web:8000 {
+		health_uri /api/health
+	}
+	log {
+		output stdout
+		format json
+	}
+}

@@ -1,6 +1,7 @@
 import type {
   ActivityStatus,
   ActivityType,
+  CompletionRequest,
   DecisionGaps,
   DecisionReadiness,
   DecisionRecommendation,
@@ -50,6 +51,19 @@ export interface BackendProfile {
   skill_gaps: DecisionGaps
   readiness: DecisionReadiness
   recommendations: DecisionRecommendations
+  pending_completions?: CompletionRequest[]
+}
+
+// GET /hr/employees — весь список с готовностью одним запросом
+export interface BackendEmployeeOverview extends BackendEmployeeSummary {
+  target_grade: string | null
+  readiness_percent: number | null
+  mandatory_readiness_percent: number | null
+  meets_mandatory: boolean | null
+  skills_with_gap: number
+  mandatory_skills_with_gap: number
+  recommendation_status: string
+  next_step: { event_id: string; title: string; score: number } | null
 }
 
 export interface BackendEvent {
@@ -165,6 +179,20 @@ export function toProfile(raw: BackendProfile): Profile {
       })),
     readiness: percent(raw.readiness.readiness_percent) ?? 100,
     completedCount: raw.history.filter((item) => item.status === 'completed').length,
+    meetsMandatory: raw.readiness.meets_mandatory,
+    pendingCompletions: raw.pending_completions ?? [],
+  }
+}
+
+export function fromOverview(raw: BackendEmployeeOverview): EmployeeShort {
+  return {
+    id: raw.employee_id,
+    name: raw.name,
+    role: raw.role,
+    department: departmentOf(raw.role),
+    grade: raw.grade,
+    nextGrade: raw.target_grade,
+    readiness: percent(raw.readiness_percent) ?? 100,
   }
 }
 

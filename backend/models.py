@@ -6,8 +6,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-Identifier = Annotated[str, Field(min_length=1, pattern=r"^[A-Za-z0-9_-]+$")]
-Label = Annotated[str, Field(min_length=1)]
+# Lengths match the database columns (backend/db.py), so a valid file always fits.
+Identifier = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
+Label = Annotated[str, Field(min_length=1, max_length=255)]
 Level = Annotated[int, Field(strict=True, ge=0, le=5)]
 RequiredLevel = Annotated[int, Field(strict=True, ge=1, le=5)]
 

@@ -44,6 +44,8 @@ export interface Profile {
   gaps: Gap[]
   readiness: number // 0..100
   completedCount: number
+  meetsMandatory: boolean | null // все обязательные навыки следующего грейда закрыты
+  pendingCompletions: CompletionRequest[] // ждут подтверждения HR
 }
 
 export interface ScoreFactor {
@@ -251,4 +253,89 @@ export interface HrStats {
     uniqueEmployees: number
     statusCounts: Record<ActivityStatus, number>
   }[]
+}
+
+// ---------- Подтверждение выполнения, администрирование ----------
+
+export type CompletionRequestStatus = 'pending' | 'approved' | 'rejected' | 'expired'
+
+export interface CompletionRequest {
+  request_id: string
+  employee_id: string
+  event_id: string
+  status: CompletionRequestStatus
+  requested_by: string
+  requested_at: string | null
+  comment: string | null
+  decided_by: string | null
+  decided_at: string | null
+  decision_comment: string | null
+  record_id: string | null
+  employee_name?: string | null
+  event_title?: string | null
+}
+
+// Результат «Выполнить»: либо навыки уже обновлены, либо заявка ушла HR
+export type CompletionOutcome =
+  | { kind: 'applied'; result: ProgressResult }
+  | { kind: 'pending'; request: CompletionRequest }
+
+export interface PromotionResult {
+  employee_id: string
+  previous_grade: string
+  new_grade: string
+  forced: boolean
+}
+
+export interface ManagedUser {
+  user_id: string
+  email: string
+  name: string
+  role: 'employee' | 'hr'
+  employee_id: string | null
+  must_change_password: boolean
+  is_active: boolean
+  consent_version: string | null
+  consent_at: string | null
+  created_at: string | null
+  last_login_at: string | null
+  locked: boolean
+}
+
+export interface UserWithPassword {
+  user: ManagedUser
+  temporary_password: string
+}
+
+export interface AuditEntry {
+  id: number
+  at: string
+  actor_id: string | null
+  actor_role: string | null
+  action: string
+  target: string | null
+  details: Record<string, unknown> | null
+  ip: string | null
+}
+
+export interface DatasetSnapshot {
+  snapshot_id: number
+  created_at: string
+  created_by: string | null
+  reason: string
+  employees: number
+  events: number
+  history_records: number
+}
+
+export interface ImportSummary {
+  status: string
+  mode: 'append' | 'replace'
+  employees: number
+  events: number
+  skills: number
+  history_records: number
+  dry_run?: boolean
+  changes?: Record<'employees' | 'events' | 'activity_history', { added: number; removed: number }>
+  skills_changed?: boolean
 }

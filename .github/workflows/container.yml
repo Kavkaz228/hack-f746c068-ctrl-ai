@@ -1,4 +1,4 @@
-name: Container verification
+name: Verification
 
 on:
   push:
@@ -10,30 +10,76 @@ permissions:
   contents: read
 
 jobs:
-  container:
+  backend:
+    name: Backend tests (${{ matrix.database }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgresql]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: career_quest_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Backend tests
+      - run: python -m pip install -r backend/requirements-dev.txt
+      - name: Unit and API tests
+        env:
+          CAREER_QUEST_TEST_DATABASE_URL: ${{ matrix.database == 'postgresql' && 'postgresql+psycopg://ci:ci-password@127.0.0.1:5432/career_quest_test' || '' }}
+        run: python -m unittest discover -s backend/tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
         run: |
-          python -m pip install -r backend/requirements-dev.txt
-          python -m unittest discover -s backend/tests
-      - name: Build and start container
-        run: docker compose up --build -d --wait --wait-timeout 180
-      - name: Check web, API, access and completion
+          npm ci --no-audit --no-fund
+          VITE_USE_MOCK=false VITE_API_URL=/api npm run build
+          VITE_USE_MOCK=true npx vite build --outDir /tmp/mock-build
+
+  container:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure environment
+        run: |
+          printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+      - name: Build and start (PostgreSQL + app + backups)
+        run: docker compose up --build -d --wait --wait-timeout 240
+      - name: Smoke check (sign-in, roles, approval flow)
         run: docker compose exec -T web python -m backend.scripts.smoke_container
-      - name: Check persistence after restart
+      - name: Persistence after restart
         run: |
           docker compose restart web
-          docker compose up -d --wait --wait-timeout 90
+          docker compose up -d --wait --wait-timeout 120
           docker compose exec -T web python -m backend.scripts.smoke_container --replay
-      - name: Show logs on failure
+      - name: Backup was written
+        run: |
+          sleep 5
+          docker compose exec -T backup sh -c 'ls -l /backups && ls /backups/*.dump'
+      - name: Logs on failure
         if: failure()
         run: docker compose logs --no-color
-      - name: Stop container
+      - name: Stop
         if: always()
-        run: docker compose down
+        run: docker compose down -v

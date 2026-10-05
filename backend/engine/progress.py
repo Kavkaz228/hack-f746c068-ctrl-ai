@@ -110,3 +110,73 @@ def complete_activity(
         recommendations_before=recommendations_before,
         recommendations_after=get_recommendations(updated_dataset, employee_id),
     )
+
+
+class ParticipationResult(Model):
+    employee_id: str
+    event_id: str
+    record_id: str
+    status: Literal["skipped", "declined", "invited", "enrolled"]
+    recommendations_after: RecommendationResult
+
+
+def record_participation(dataset: Dataset, employee_id: str, event_id: str, status: str,
+                         record_id: str, on: date) -> tuple[Dataset, ParticipationResult]:
+    """Store a non-completion outcome (skip/decline). Skills never change here,
+    but the history multiplier of future recommendations does."""
+    if status not in {"skipped", "declined", "invited", "enrolled"}:
+        raise ProgressError("invalid_status", f"Unsupported participation status '{status}'")
+    employee = next((item for item in dataset.employees if item.employee_id == employee_id), None)
+    if employee is None:
+        raise ProgressError("employee_not_found", f"Employee '{employee_id}' not found")
+    event = next((item for item in dataset.events if item.event_id == event_id), None)
+    if event is None:
+        raise ProgressError("event_not_found", f"Activity '{event_id}' not found")
+    if not event.active:
+        raise ProgressError("inactive_event", f"Activity '{event_id}' is inactive")
+    if employee.role not in event.audience:
+        raise ProgressError("ineligible_role", f"Activity '{event_id}' is not available to '{employee.role}'")
+    record = HistoryRecord(record_id=record_id, employee_id=employee_id, event_id=event_id,
+                           status=status, event_date=on)
+    payload = dataset.model_dump(mode="json")
+    payload["activity_history"].append(record.model_dump(mode="json"))
+    updated = Dataset.model_validate(payload)
+    return updated, ParticipationResult(
+        employee_id=employee_id, event_id=event_id, record_id=record_id, status=status,
+        recommendations_after=get_recommendations(updated, employee_id))
+
+
+class PromotionResult(Model):
+    employee_id: str
+    previous_grade: str
+    new_grade: str
+    forced: bool
+    readiness_before: GradeReadinessResult
+    readiness_after: GradeReadinessResult
+
+
+def promote_employee(dataset: Dataset, employee_id: str, *, force: bool = False,
+                     expected_grade: str | None = None) -> tuple[Dataset, PromotionResult]:
+    """Move an employee to the next grade of their track (HR decision).
+
+    Without ``force`` every mandatory requirement of the target grade must be met;
+    the readiness percentage alone never promotes anyone.
+    """
+    employee = next((item for item in dataset.employees if item.employee_id == employee_id), None)
+    if employee is None:
+        raise ProgressError("employee_not_found", f"Employee '{employee_id}' not found")
+    if expected_grade is not None and employee.grade != expected_grade:
+        raise ProgressError("grade_changed", f"Грейд уже изменён на «{employee.grade}» — обновите страницу")
+    readiness = get_employee_grade_readiness(dataset, employee_id)
+    if readiness.status == "top_grade" or readiness.target_grade is None:
+        raise ProgressError("top_grade", "Employee already has the top grade of the career track")
+    if not readiness.meets_mandatory and not force:
+        raise ProgressError("requirements_not_met", "Mandatory requirements of the next grade are not met")
+    payload = dataset.model_dump(mode="json")
+    target = next(item for item in payload["employees"] if item["employee_id"] == employee_id)
+    target["grade"] = readiness.target_grade
+    updated = Dataset.model_validate(payload)
+    return updated, PromotionResult(
+        employee_id=employee_id, previous_grade=employee.grade, new_grade=readiness.target_grade,
+        forced=bool(force and not readiness.meets_mandatory), readiness_before=readiness,
+        readiness_after=get_employee_grade_readiness(updated, employee_id))

@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import type { ProgressResult } from '../types'
+import type { CompletionRequest, ProgressResult } from '../types'
 import { completeAttempt, useCompleteActivity, useProfile, useRecommendations, useRejectActivity } from '../hooks/queries'
+import { PromotionPanel } from '../components/profile/PromotionPanel'
+import { formatDateTime } from '../components/ui/form'
 import { ProfileHeader } from '../components/profile/ProfileHeader'
 import { SkillGapChart } from '../components/profile/SkillGapChart'
 import { GapList } from '../components/profile/GapList'
@@ -9,9 +11,9 @@ import { RecommendationCard } from '../components/recommendations/Recommendation
 import { DecisionLab } from '../components/recommendations/DecisionLab'
 import { AiRecommendation } from '../components/recommendations/AiRecommendation'
 import { CompleteModal } from '../components/progress/CompleteModal'
-import { EmptyState, ErrorState, Skeleton } from '../components/ui'
+import { Badge, Card, EmptyState, ErrorState, Skeleton } from '../components/ui'
 import { useAuth } from '../auth/AuthContext'
-import { ApiError, USE_MOCK } from '../api/client'
+import { ApiError, createIdempotencyKey, USE_MOCK } from '../api/client'
 
 export function ProfilePage() {
   const { id = '' } = useParams()
@@ -23,6 +25,8 @@ export function ProfilePage() {
 
   const [pending, setPending] = useState<{ aid: string; kind: 'complete' | 'skip' | 'decline' } | null>(null)
   const [result, setResult] = useState<ProgressResult | null>(null)
+  const [sent, setSent] = useState<CompletionRequest | null>(null)
+  const needsApproval = session?.role === 'employee' && session.completionMode === 'approval'
   const [highlight, setHighlight] = useState<string | null>(null)
   const [previewEventId, setPreviewEventId] = useState('')
   const completionKeys = useRef(new Map<string, string>())
@@ -37,10 +41,14 @@ export function ProfilePage() {
     completionKeys.current.set(aid, attempt.idempotencyKey)
     setPending({ aid, kind: 'complete' })
     complete.mutate(attempt, {
-      onSuccess: (r) => {
+      onSuccess: (outcome) => {
         completionKeys.current.delete(aid)
-        setResult(r)
-        setHighlight(r.changes[0]?.skill ?? null)
+        if (outcome.kind === 'pending') {
+          setSent(outcome.request)
+          return
+        }
+        setResult(outcome.result)
+        setHighlight(outcome.result.changes[0]?.skill ?? null)
       },
       // При неизвестном transport-исходе сохраняем UUID и используем его при
       // ручном повторе; при определённом HTTP-ответе новая попытка получит новый ключ.
@@ -53,8 +61,9 @@ export function ProfilePage() {
   }
   const onReject = (aid: string, action: 'skip' | 'decline') => {
     setPending({ aid, kind: action })
-    reject.mutate({ aid, action }, { onSettled: () => setPending(null) })
+    reject.mutate({ aid, action, idempotencyKey: createIdempotencyKey() }, { onSettled: () => setPending(null) })
   }
+  const waiting = new Set(profile.data?.pendingCompletions.map((item) => item.event_id))
 
   if (profile.error) return <ErrorState error={profile.error} onRetry={profile.refetch} />
 
@@ -63,6 +72,29 @@ export function ProfilePage() {
       {session?.role === 'hr' && <Link to="/" className="inline-flex rounded-full bg-white/60 px-4 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-black/5 backdrop-blur transition hover:bg-white hover:text-slate-900">← Все сотрудники</Link>}
 
       {profile.data ? <ProfileHeader profile={profile.data} /> : <Skeleton className="h-28" />}
+
+      {session?.role === 'hr' && profile.data && <PromotionPanel profile={profile.data} />}
+
+      {sent && (
+        <p role="status" className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 ring-1 ring-emerald-500/15">
+          Заявка «{sent.event_title ?? sent.event_id}» отправлена HR. Навыки обновятся после подтверждения.
+        </p>
+      )}
+
+      {profile.data && profile.data.pendingCompletions.length > 0 && (
+        <Card className="!py-4">
+          <p className="font-semibold text-slate-900">Ждут подтверждения HR</p>
+          <ul className="mt-2 space-y-1 text-sm text-slate-600">
+            {profile.data.pendingCompletions.map((item) => (
+              <li key={item.request_id} className="flex flex-wrap items-center gap-2">
+                <Badge tone="amber">на проверке</Badge>
+                <span className="text-slate-800">{item.event_title ?? item.event_id}</span>
+                <span className="text-xs text-slate-500">с {formatDateTime(item.requested_at)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
         {profile.data ? (
@@ -113,11 +145,12 @@ export function ProfilePage() {
               rec={r}
               rank={i + 1}
               busy={pending?.aid === r.activityId ? pending.kind : null}
-              disabled={!!pending}
+              disabled={!!pending || waiting.has(r.activityId)}
+              completeLabel={waiting.has(r.activityId) ? 'Ждёт подтверждения HR' : needsApproval ? 'Отправить на подтверждение' : undefined}
               onComplete={() => onComplete(r.activityId)}
               onPreview={() => onPreview(r.activityId)}
-              onSkip={USE_MOCK ? () => onReject(r.activityId, 'skip') : undefined}
-              onDecline={USE_MOCK ? () => onReject(r.activityId, 'decline') : undefined}
+              onSkip={() => onReject(r.activityId, 'skip')}
+              onDecline={() => onReject(r.activityId, 'decline')}
             />
           ))}
         </div>

@@ -12,6 +12,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from backend.api.app import create_app
+from backend.tests.support import database_url, make_settings
 from backend.api.auth import Account
 from backend.data_loader import HISTORY_COLUMNS
 from backend.engine.progress import complete_activity
@@ -160,7 +161,8 @@ class SimulationApiTests(unittest.TestCase):
         ]
         self.hr = {"Authorization": "Bearer simulation-hr-token-123456"}
         self.employee = {"Authorization": "Bearer simulation-employee-token-123456"}
-        self.app = create_app(state_path=Path(self.directory.name) / "state.sqlite3", accounts=accounts)
+        self.app = create_app(database_url=database_url(self, self.directory.name), accounts=accounts,
+                              settings=make_settings())
         self.client = self.enterContext(TestClient(self.app))
 
     def snapshot(self):

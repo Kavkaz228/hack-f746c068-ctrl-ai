@@ -14,9 +14,10 @@ interface Props {
   onPreview: () => void
   onSkip?: () => void
   onDecline?: () => void
+  completeLabel?: string
 }
 
-export function RecommendationCard({ rec, rank, busy, disabled, onComplete, onPreview, onSkip, onDecline }: Props) {
+export function RecommendationCard({ rec, rank, busy, disabled, onComplete, onPreview, onSkip, onDecline, completeLabel }: Props) {
   const [open, setOpen] = useState(rank === 1)
   const after = Math.max(rec.currentLevel, Math.min(rec.currentLevel + rec.gain, rec.maxLevel))
   const capped = rec.currentLevel + rec.gain > rec.maxLevel
@@ -96,7 +97,7 @@ export function RecommendationCard({ rec, rank, busy, disabled, onComplete, onPr
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Button variant="ghost" onClick={onPreview} disabled={disabled}>Что будет, если…</Button>
-            <Button onClick={onComplete} loading={busy === 'complete'} disabled={disabled}>Выполнить активность</Button>
+            <Button onClick={onComplete} loading={busy === 'complete'} disabled={disabled}>{completeLabel ?? 'Выполнить активность'}</Button>
             {onSkip && <Button variant="ghost" onClick={onSkip} loading={busy === 'skip'} disabled={disabled}>Пропустить</Button>}
             {onDecline && <Button variant="danger" onClick={onDecline} loading={busy === 'decline'} disabled={disabled}>Отказаться</Button>}
           </div>

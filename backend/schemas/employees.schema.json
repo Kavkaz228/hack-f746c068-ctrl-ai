@@ -4,22 +4,26 @@
       "additionalProperties": false,
       "properties": {
         "employee_id": {
+          "maxLength": 64,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Employee Id",
           "type": "string"
         },
         "name": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Name",
           "type": "string"
         },
         "role": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Role",
           "type": "string"
         },
         "grade": {
+          "maxLength": 255,
           "minLength": 1,
           "title": "Grade",
           "type": "string"
@@ -38,6 +42,7 @@
             }
           },
           "propertyNames": {
+            "maxLength": 64,
             "minLength": 1
           },
           "title": "Skills",

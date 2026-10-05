@@ -17,13 +17,14 @@ from backend.engine.grade_progress import get_employee_grade_readiness
 from backend.api.presenters import get_hr_dashboard
 from backend.engine.recommendation import get_recommendations
 from backend.engine.skill_gap import get_employee_skill_gaps
+from backend.tests.support import database_url, make_settings
 
 
 class ApiTests(unittest.TestCase):
     def setUp(self):
         self.directory = TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
-        self.state_path = Path(self.directory.name) / "state.sqlite3"
+        self.database_url = database_url(self, self.directory.name)
         self.accounts = [
             Account(account_id="hr", role="hr", token="hr-test-token-123456"),
             Account(account_id="employee", role="employee", employee_id="E001",
@@ -31,7 +32,7 @@ class ApiTests(unittest.TestCase):
         ]
         self.hr = {"Authorization": "Bearer hr-test-token-123456"}
         self.employee = {"Authorization": "Bearer employee-test-123456"}
-        self.app = create_app(state_path=self.state_path, accounts=self.accounts)
+        self.app = create_app(database_url=self.database_url, accounts=self.accounts, settings=make_settings())
         self.client = self.enterContext(TestClient(self.app))
         self.seed = load_dataset()
 
@@ -76,8 +77,10 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.post("/dataset/import").status_code, 401)
         self.assertEqual(self.complete(headers={}).status_code, 401)
         identity = self.client.get("/auth/me", headers=self.employee).json()
-        self.assertEqual(identity, {"account_id": "employee", "role": "employee", "employee_id": "E001"})
+        self.assertEqual({key: identity[key] for key in ("account_id", "role", "employee_id", "auth")},
+                         {"account_id": "employee", "role": "employee", "employee_id": "E001", "auth": "token"})
         self.assertNotIn("token", identity)
+        self.assertFalse(identity["consent_required"] or identity["must_change_password"])
 
     def test_employee_cannot_read_other_history_or_use_hr_endpoints(self):
         for path in ("/employees/E002", "/employees/E002/recommendations", "/employees/UNKNOWN",
@@ -162,7 +165,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(retry.json(), result)
         self.assertEqual(retry.headers["idempotency-replayed"], "true")
         self.assertEqual(self.snapshot(), after)
-        restarted = create_app(state_path=self.state_path, accounts=self.accounts)
+        restarted = create_app(database_url=self.database_url, accounts=self.accounts, settings=make_settings())
         with TestClient(restarted) as client:
             response = client.post("/employees/E001/activities/EV002/complete",
                                    headers={**self.employee, "Idempotency-Key": str(key)})
